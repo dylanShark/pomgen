@@ -22,7 +22,7 @@ import os
 class Node:
     """
     A single node in the DAG, based on references in BUILD files.
-    Each Bazel target gets its own Node instance. Typically, there is one 
+    Each Bazel target gets its own Node instance. Typically, there is one
     target per bazel package.
     """
 
@@ -50,7 +50,7 @@ class Node:
 
 class CrawlerResult:
     """
-    Useful bits and pieces that are the outcome of crawling monorepo 
+    Useful bits and pieces that are the outcome of crawling monorepo
     BUILD files.
     """
 
@@ -89,11 +89,11 @@ class Crawler:
 
         Builds up a DAG of Node instances based on the references in BUILD
         files.
-        
+
         Arguments:
 
-        follow_monorepo_references: 
-            If False, this crawler will not crawl monorepo references, 
+        follow_monorepo_references:
+            If False, this crawler will not crawl monorepo references,
             effectively only processing the packages passed into this method
 
             This is typically only used for debugging.
@@ -131,8 +131,8 @@ class Crawler:
 
         # Crawling is complete at this point, now process the nodes
 
-        
-        # for bazel targets that do not generate a pom 
+
+        # for bazel targets that do not generate a pom
         # (pom_generation_mode=skip), we still need to handle dependencies;
         # this is the "import bundle" use case.
         # push the dependencies up to the closest parent node that does
@@ -172,7 +172,7 @@ class Crawler:
         pomgen instances will actually end up using when generating pom.xml
         files.
         """
-        # there are 2 types of dep registrations: 
+        # there are 2 types of dep registrations:
         #   -> local, only the deps actually belonging to each pomgen instance
         #   -> global, ie all deps discovered, set on each pomgen instance
 
@@ -185,7 +185,7 @@ class Crawler:
         # 2) global
         deps = self._get_crawled_packages_as_deps()
         for p in self.pomgens:
-            p.register_dependencies_globally(deps, 
+            p.register_dependencies_globally(deps,
                                              self.crawled_external_dependencies)
 
     def _get_crawled_packages_as_deps(self):
@@ -195,9 +195,9 @@ class Crawler:
 
     def _get_unprocessed_packages(self):
         """
-        For each crawled library, ensure we have included all its packages 
+        For each crawled library, ensure we have included all its packages
         (each package with a BUILD.pom file is a single maven artifact)
-        
+
         Returns a list of strings, the paths to the packages that need to be
         handled.
         """
@@ -213,9 +213,9 @@ class Crawler:
                 missing_packages += all_library_packages.difference(all_packages_already_processed)
         return missing_packages
 
-    def _check_for_pom_changes(self):
+    def _check_for_pom_changes(self, failIfMultiple=False):
         """
-        For each artifact def not flagged as needing to be released, check 
+        For each artifact def not flagged as needing to be released, check
         whether its current pom is different than the previously released pom.
         If the pom has changed, mark the artifact def as needing to be released.
         """
@@ -223,7 +223,7 @@ class Crawler:
         for pomgen in self.pomgens:
             art_def = pomgen.artifact_def
             if not art_def.requires_release and art_def.released_pom_content is not None:
-                current_pom = pomparser.pretty_print(pomgen.gen(pom.PomContentType.GOLDFILE))
+                current_pom = pomparser.pretty_print(pomgen.gen(pom.PomContentType.GOLDFILE, failIfMultiple))
                 previous_pom = pomparser.pretty_print(art_def.released_pom_content)
                 pom_changed = current_pom != previous_pom
                 if pom_changed:
@@ -252,10 +252,10 @@ class Crawler:
         for node in self.leafnodes:
             processed_nodes = set() # Node instances that were already handled
             collected_dep_lists = [] # list of list of deps
-            self._push_transitives_and_walk(node, collected_dep_lists, 
+            self._push_transitives_and_walk(node, collected_dep_lists,
                                             processed_nodes)
 
-    def _push_transitives_and_walk(self, node, collected_dep_lists, 
+    def _push_transitives_and_walk(self, node, collected_dep_lists,
                                    processed_nodes):
         package = node.artifact_def.bazel_package
         target_key = self._get_target_key(package, node.dependency)
@@ -300,7 +300,7 @@ class Crawler:
         the reverse trasitive deps as having changed, so that we end up
         releasing A, B and C.
 
-        If force_release is set, all artifacts are marked as requiring 
+        If force_release is set, all artifacts are marked as requiring
         releasing.
         """
         # we start with a leafnode, and walk up (the leaf nodes represent
@@ -333,7 +333,7 @@ class Crawler:
                         artifact_def.release_reason = ReleaseReason.FORCE
                     updated_artifact_defs.append(artifact_def)
 
-        # process all artifact nodes belonging to the current library, 
+        # process all artifact nodes belonging to the current library,
         # otherwise we may miss some references to other libraries
         all_artifact_nodes = self.library_to_nodes[library_path]
         for n in all_artifact_nodes:
@@ -351,20 +351,20 @@ class Crawler:
         """
         Returns a list of Node instances, one for each of the specified Bazel
         packages (directories). Each package must have a BUILD.pom file,
-        as well as a LIBRARY.root file, either in the same directory as the 
+        as well as a LIBRARY.root file, either in the same directory as the
         BUILD.pom file or in a parent directory (for libraries with more than
         one artifact).
-        
-        follow_monorepo_references: 
+
+        follow_monorepo_references:
             If False, this method doesn't follow monorepo references.
         """
         nodes = []
         for package in packages:
-            n = self._crawl(package, dep=None, parent_node=None, 
+            n = self._crawl(package, dep=None, parent_node=None,
                             follow_monorepo_references=follow_monorepo_references)
             nodes.append(n)
         return nodes
-    
+
     def _crawl(self, package, dep, parent_node, follow_monorepo_references):
         """
         For the specified package, crawl monorepo dependencies, unless
@@ -382,7 +382,7 @@ class Crawler:
             # through another path: A -> Z -> B -> C
             # the parent is different, but the children have to be the same
             cached_node = self.target_to_node[target_key]
-            node = Node(parent_node, cached_node.artifact_def, 
+            node = Node(parent_node, cached_node.artifact_def,
                         cached_node.dependency)
             node.children = cached_node.children
             self.library_to_nodes[node.artifact_def.library_path].append(node)
@@ -396,7 +396,7 @@ class Crawler:
 
             if artifact_def is None:
                 raise Exception("No artifact defined at package %s" % package)
-            
+
             self._validate_default_target_dep(parent_node, dep, artifact_def)
 
             self.package_to_artifact[package] = artifact_def
@@ -416,7 +416,7 @@ class Crawler:
                 # crawl monorepo dependencies
                 for source_dep in source_deps:
                     child_node = self._crawl(source_dep.bazel_package,
-                                             source_dep, node, 
+                                             source_dep, node,
                                              follow_monorepo_references)
                     node.children.append(child_node)
             self.target_to_node[target_key] = node
@@ -427,12 +427,12 @@ class Crawler:
     def _validate_default_target_dep(self, parent_node, dep, artifact_def):
         if dep is not None:
             if artifact_def.pom_generation_mode.produces_artifact:
-                # if the current bazel target produces an artifact 
-                # (pom/jar that goes to Nexus), validate that the BUILD 
-                # file pointing at this target uses the default bazel 
-                # package target 
-                # this is a current pomgen requirement: 
-                # 1 bazel package produces one artifact, named after the 
+                # if the current bazel target produces an artifact
+                # (pom/jar that goes to Nexus), validate that the BUILD
+                # file pointing at this target uses the default bazel
+                # package target
+                # this is a current pomgen requirement:
+                # 1 bazel package produces one artifact, named after the
                 # bazel package
                 dflt_package_name = os.path.basename(artifact_def.bazel_package)
                 if dep.bazel_target != dflt_package_name:
@@ -443,7 +443,7 @@ class Crawler:
             # make a real dependency instance here so we can pass it along
             # into the pom generator
             dep = dependency.new_dep_from_maven_artifact_def(artifact_def)
-        return pom.get_pom_generator(self.workspace, 
+        return pom.get_pom_generator(self.workspace,
                                      self.pom_template, artifact_def,
                                      dep)
 

@@ -20,13 +20,13 @@ import re
 class PomContentType:
     """
     Available pom content types:
-      
-      RELEASE - this is the default, standard pom.xml, based on  BUILD file or 
+
+      RELEASE - this is the default, standard pom.xml, based on  BUILD file or
           pom.template content.
 
       GOLDFILE - this pom content is meant for comparing against another
                  previously generated pom (the "goldfile" pom). This content
-                 type differs from the default RELEASE type in the following 
+                 type differs from the default RELEASE type in the following
                  ways:
                    - dependencies are explictly ordered (default is BUILD order)
                    - versions of monorepo-based dependencies are removed
@@ -44,7 +44,7 @@ def get_pom_generator(workspace, pom_template, artifact_def, dependency):
     Arguments:
         workspace: the crawl.workspace.Workspace singleton
         pom_template: the template to use for generating dynamic (jar) pom.xmls
-        artifact_def: the crawl.buildpom.MavenArtifactDef instance for access 
+        artifact_def: the crawl.buildpom.MavenArtifactDef instance for access
             to the parsed MVN-INF/* metadata files
         dependency: the dependency pointing to this artifact_def
     """
@@ -80,7 +80,7 @@ class AbstractPomGen(object):
     def bazel_package(self):
         return self._artifact_def.bazel_package
 
-    @property 
+    @property
     def dependency(self):
         return self._dependency
 
@@ -91,7 +91,7 @@ class AbstractPomGen(object):
         This method *must* be called before requesting this instance to generate
         a pom.
 
-        This method returns a tuple of 3 (!) lists of Dependency instances: 
+        This method returns a tuple of 3 (!) lists of Dependency instances:
             (l1, l2, l3)
             l1: all source dependencies (== references to other bazel packages)
             l2: all external dependencies (maven jars)
@@ -109,9 +109,9 @@ class AbstractPomGen(object):
                 ext_dependencies.append(dep)
             else:
                 source_dependencies.append(dep)
-        
-        return (tuple(source_dependencies), 
-                tuple(ext_dependencies), 
+
+        return (tuple(source_dependencies),
+                tuple(ext_dependencies),
                 tuple(all_deps))
 
     def register_dependencies(self, dependencies):
@@ -129,16 +129,16 @@ class AbstractPomGen(object):
         """
         pass
 
-    def register_dependencies_globally(self, 
-                                       crawled_bazel_packages, 
+    def register_dependencies_globally(self,
+                                       crawled_bazel_packages,
                                        crawled_external_dependencies):
         """
         This method is called after all bazel packages have been crawled and
         processed, with the following sets of Dependency instances:
 
-            - crawled_bazel_packages: 
+            - crawled_bazel_packages:
                   the set of ALL crawled bazel packages
-            - crawled_external_dependencies: 
+            - crawled_external_dependencies:
                   the set of ALL crawled (discovered) external dependencies
 
         Subclasses that care about this must implement this method and
@@ -155,7 +155,7 @@ class AbstractPomGen(object):
 
     def _load_additional_dependencies_hook(self):
         """
-        Returns a list of dependency instances referenced by the current 
+        Returns a list of dependency instances referenced by the current
         package.
 
         Only meant to be overridden by subclasses.
@@ -164,7 +164,7 @@ class AbstractPomGen(object):
 
     def _artifact_def_version(self, pomcontenttype):
         """
-        Returns the associated artifact's version, based on the specified 
+        Returns the associated artifact's version, based on the specified
         PomContentType.
 
         This is a utility method for subclasses.
@@ -198,7 +198,7 @@ class AbstractPomGen(object):
         """
         Generates a pomx.xml <dependency> element.
 
-        Returns the generated content and the current identation level as a 
+        Returns the generated content and the current identation level as a
         tuple: (content, indent)
 
         This is a utility method for subclasses.
@@ -235,7 +235,7 @@ class NoopPomGen(AbstractPomGen):
         super(NoopPomGen, self).__init__(workspace, artifact_def, dependency)
 
     def _load_additional_dependencies_hook(self):
-        return _query_dependencies(self._workspace, self._artifact_def, 
+        return _query_dependencies(self._workspace, self._artifact_def,
                                    self._dependency)
 
 
@@ -249,8 +249,8 @@ class TemplatePomGen(AbstractPomGen):
 
     # these properties need to be replaced first in pom templates
     # because their values may reference other properties
-    INITAL_PROPERTY_SUBSTITUTIONS = (EXT_DEPS_PROP_NAME, 
-                                     BAZEL_PGK_DEPS_PROP_NAME, 
+    INITAL_PROPERTY_SUBSTITUTIONS = (EXT_DEPS_PROP_NAME,
+                                     BAZEL_PGK_DEPS_PROP_NAME,
                                      UNUSED_CONFIGURED_DEPS_PROP_NAME,)
 
     """
@@ -262,16 +262,16 @@ class TemplatePomGen(AbstractPomGen):
         self.crawled_bazel_packages = set()
         self.crawled_external_dependencies = set()
 
-    def register_dependencies_globally(self, 
-                                       crawled_bazel_packages, 
+    def register_dependencies_globally(self,
+                                       crawled_bazel_packages,
                                        crawled_external_dependencies):
         self.crawled_bazel_packages = crawled_bazel_packages
         self.crawled_external_dependencies = crawled_external_dependencies
 
-    def gen(self, pomcontenttype=PomContentType.RELEASE):
+    def gen(self, pomcontenttype=PomContentType.RELEASE, failIfMultiple=True):
         pom_content, parsed_dependencies = self._process_pom_template_content(self.template_content)
 
-        properties = self._get_properties(pomcontenttype, parsed_dependencies)
+        properties = self._get_properties(pomcontenttype, parsed_dependencies, False)
 
         for k in TemplatePomGen.INITAL_PROPERTY_SUBSTITUTIONS:
             if k in properties:
@@ -303,24 +303,24 @@ class TemplatePomGen(AbstractPomGen):
             # make this a well formed pom
             dynamic_deps_content = "<project><dependencies>%s</dependencies></project>" % dynamic_deps_content
             parsed_dependencies = pomparser.parse_dependencies(dynamic_deps_content)
-            # now that dependencies have been parsed, remove the special 
+            # now that dependencies have been parsed, remove the special
             # depdendency config section from pom template
             pom_template_content = pom_template_content[:start_section_index] + pom_template_content[end_section_index + len(TemplatePomGen.DEPS_CONFIG_SECTION_END)+1:]
             return (pom_template_content, parsed_dependencies)
 
-    def _get_properties(self, pomcontenttype, pom_template_parsed_deps):
-        properties = self._get_version_properties(pomcontenttype)
-        properties.update(self._get_crawled_dependencies_properties(pomcontenttype, pom_template_parsed_deps))            
+    def _get_properties(self, pomcontenttype, pom_template_parsed_deps, failIfMultiple=True):
+        properties = self._get_version_properties(pomcontenttype, failIfMultiple)
+        properties.update(self._get_crawled_dependencies_properties(pomcontenttype, pom_template_parsed_deps))
         return properties
 
-    def _get_version_properties(self, pomcontenttype):
+    def _get_version_properties(self, pomcontenttype, failIfMultiple=True):
         # the version of all dependencies can be referenced in a pom template
         # using the syntax: #{<groupId>:<artifactId>:[<classifier>:]version}.
         #
         # Additionally, versions of external dependencies may be referenced
         # using the dependency's "maven_jar" name, for example:
         # #{com_google_guava_guava.version}
-        # 
+        #
         # the latter form is being phased out to avoid having to change pom
         # templates when dependencies move in (and out?) of the monorepo.
 
@@ -345,10 +345,14 @@ class TemplatePomGen(AbstractPomGen):
                     # ok, as long as their versions are identical, so check for
                     # that
                     if dep.version == conflicting_dep.version:
-                        found_conflicting_deps = False # ok
-
+                        found_conflicting_deps = False # always ok, versions are the same
+                    else:
+                        if failIfMultiple:
+                           found_conflicting_deps = True # not ok
+                        else:
+                           found_conflicting_deps = False # ok
                 if found_conflicting_deps:
-                    msg = "Found multiple artifacts with the same groupId:artifactId: \"%s\". This means that there are multiple BUILD.pom files defining the same artifact, or that a BUILD.pom defined artifact has the same groupId and artifactId as a referenced maven_jar, or that multiple maven_jars reference the same groupId/artifactId but different versions" % dep.maven_coordinates_name
+                    msg = "Found multiple artifacts with the same groupId:artifactId: \"%s\". This means that there are 1) multiple BUILD.pom files defining the same artifact, 2) a BUILD.pom defined artifact has the same groupId and artifactId as a referenced maven_jar, or 3) the WORKSPACE references the same maven jar (groupId/artifactId) multiple times with different versions." % dep.maven_coordinates_name
                     raise Exception(msg)
             key_to_version[key] = self._dep_version(pomcontenttype, dep)
             key_to_dep[key] = dep
@@ -367,19 +371,19 @@ class TemplatePomGen(AbstractPomGen):
 
     def _get_crawled_dependencies_properties(self, pomcontenttype, pom_template_parsed_deps):
         # this is somewhat lame: an educated guess on where the properties
-        # being build here will be referenced (within 
+        # being build here will be referenced (within
         # project/depedencyManagement/dependencies)
         indent = _INDENT*3
 
         properties = {}
 
         content = self._build_deps_property_content(self.crawled_bazel_packages,
-                                                    pom_template_parsed_deps, 
+                                                    pom_template_parsed_deps,
                                                     pomcontenttype, indent)
         properties[TemplatePomGen.BAZEL_PGK_DEPS_PROP_NAME] = content
 
         content = self._build_deps_property_content(self.crawled_external_dependencies,
-                                                    pom_template_parsed_deps, 
+                                                    pom_template_parsed_deps,
                                                     pomcontenttype, indent)
         properties[TemplatePomGen.EXT_DEPS_PROP_NAME] = content
 
@@ -402,7 +406,7 @@ class TemplatePomGen(AbstractPomGen):
         content = content.rstrip()
         return content
 
-    def _build_deps_property_content(self, deps, pom_template_parsed_deps, 
+    def _build_deps_property_content(self, deps, pom_template_parsed_deps,
                                      pomcontenttype, indent):
 
         content = ""
@@ -417,7 +421,7 @@ class TemplatePomGen(AbstractPomGen):
                 exclusions.sort()
                 group_and_artifact_ids = [(d.group_id, d.artifact_id) for d in exclusions]
                 content, indent = self._gen_exclusions(content, indent, group_and_artifact_ids)
-                content, indent = self._xml(content, "dependency", indent, close_element=True)         
+                content, indent = self._xml(content, "dependency", indent, close_element=True)
 
         content = content.rstrip()
         return content
@@ -439,7 +443,7 @@ class TemplatePomGen(AbstractPomGen):
 
 class DynamicPomGen(AbstractPomGen):
     """
-    A non-generic, non-reusable, specialized pom.xml generator, targeted 
+    A non-generic, non-reusable, specialized pom.xml generator, targeted
     for the "monorepo pom generation" use-case.
 
     Generates a pom.xm file based on the specified singleton (shared) template.
@@ -461,7 +465,7 @@ class DynamicPomGen(AbstractPomGen):
     def register_dependencies(self, dependencies):
         self.dependencies = dependencies
 
-    def gen(self, pomcontenttype=PomContentType.RELEASE):
+    def gen(self, pomcontenttype=PomContentType.RELEASE, failIfMultiple=True):
         content = self.pom_template.replace("${group_id}", self._artifact_def.group_id)
         content = content.replace("${artifact_id}", self._artifact_def.artifact_id)
         version = self._artifact_def_version(pomcontenttype)
@@ -472,7 +476,7 @@ class DynamicPomGen(AbstractPomGen):
     def _load_additional_dependencies_hook(self):
         return _query_dependencies(self._workspace, self._artifact_def,
                                    self._dependency)
-        
+
     def _gen_dependencies(self, pomcontenttype):
         if len(self.dependencies) == 0:
             return ""
@@ -500,7 +504,7 @@ class DynamicPomGen(AbstractPomGen):
 
     def _get_explicit_exclusions_for_dep(self, dep):
         """
-        A few jar artifacts reference dependencies that do not exist; these 
+        A few jar artifacts reference dependencies that do not exist; these
         need to be excluded explicitly.
 
         Returns tuples (group_id, artifact_id) to exclude.
@@ -527,7 +531,7 @@ def _sort(s):
     return l
 
 
-# this method delegates to bazel query to get the value of a bazel target's 
+# this method delegates to bazel query to get the value of a bazel target's
 # "deps" and "runtime_deps" attributes. it really doesn't below in this module,
 # because it has nothing to do with generating a pom.xml file.
 # it could move into common.pomgenmode or live closer to the crawler
