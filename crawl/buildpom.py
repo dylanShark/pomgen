@@ -49,6 +49,13 @@ class MavenArtifactDef(object):
         pom to facilitate upload to Nexus only (ie Beacon).
         Setting this to False also disables crawling source dependencies 
         referenced by this bazel package.
+
+    change_detection: whether pomgen should only generate pom when it detects changes.
+        This defaults to True, because if there is no change, ideally we don't want to
+        regenerate pom.  However, there are some edge cases, for example, the module
+        did not change but its deps have changed. When include_deps is set to false, 
+        pomgen would skip generating pom. In this case it would be useful to set this
+        flag to False so that pomgen would still generate pom for the module.
         
 
     ==== Read out of the optional BUILD.pom.released file ====
@@ -115,6 +122,7 @@ class MavenArtifactDef(object):
         self._pom_template_file = pom_template_file
         self._deps = deps
         self._include_deps = include_deps
+        self._change_detection = change_detection
         self._released_version = released_version
         self._released_artifact_hash = released_artifact_hash
         self._bazel_package = bazel_package
@@ -151,6 +159,10 @@ class MavenArtifactDef(object):
     @property
     def include_deps(self):
         return self._include_deps
+
+    @property
+    def change_detection(self):
+        return self._change_detection
 
     @property
     def released_version(self):
@@ -218,6 +230,7 @@ def maven_artifact(group_id=None,
                    pom_generation_mode=None,
                    pom_template_file=None,
                    include_deps=True,
+                   change_detection=True,
                    deps=[]):
     """
     This function is only intended to be called from BUILD.pom files.    
@@ -228,7 +241,8 @@ def maven_artifact(group_id=None,
                             pom_generation_mode,
                             pom_template_file,
                             deps,
-                            include_deps)
+                            include_deps,
+                            change_detection)
 
 def released_maven_artifact(version, artifact_hash):
     """
