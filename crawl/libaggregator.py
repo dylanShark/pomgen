@@ -90,6 +90,8 @@ class LibraryNode:
             return "+"
         elif release_reason == ReleaseReason.FIRST:
             return "++"
+        elif release_reason == ReleaseReason.ALWAYS:
+            return "!"
         else:
             raise Exception("Unhandled release reason: %s" % self.release_reason)
     
